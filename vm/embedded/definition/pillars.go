@@ -76,6 +76,10 @@ const (
 			{"name":"producedBlockNum","type":"int32"},
 			{"name":"expectedBlockNum","type":"int32"},
 			{"name":"weight","type":"uint256"}
+		]},
+		{"type":"variable","name":"pillarEpochTerms","inputs":[
+			{"name":"giveBlockRewardPercentage","type":"uint8"},
+			{"name":"giveDelegateRewardPercentage","type":"uint8"}
 		]}
 	]`
 
@@ -106,6 +110,7 @@ const (
 	legacyPillarEntryVariableName   = "LegacyPillarEntry"
 	delegationInfoVariableName      = "delegationInfo"
 	pillarEpochHistoryVariableName  = "pillarEpochHistory"
+	pillarEpochTermsVariableName    = "pillarEpochTerms"
 )
 
 var (
@@ -117,6 +122,7 @@ var (
 	legacyPillarEntryKeyPrefix   = []byte{3}
 	delegationInfoKeyPrefix      = []byte{4}
 	pillarEpochHistoryKeyPrefix  = []byte{5}
+	pillarEpochTermsKeyPrefix    = []byte{6}
 
 	// AnyPillarType matches every pillar type when filtering with
 	// GetPillarsList.
@@ -671,3 +677,153 @@ func (g *PillarEpochHistory) UnmarshalJSON(data []byte) error {
 	g.Weight = common.StringToBigInt(aux.Weight)
 	return nil
 }
+
+// PillarEpochTerms records the reward-sharing percentages effective for a
+// pillar starting from EffectiveEpoch. Stored under pillarEpochTermsKeyPrefix
+// (6) followed by the SHA3-256 hash of the pillar name and the effective
+// epoch as 8 big-endian bytes, so a pillar's records iterate in ascending
+// epoch order.
+type PillarEpochTerms struct {
+	Name                         string `json:"name"`
+	EffectiveEpoch               uint64 `json:"effectiveEpoch"`
+	GiveBlockRewardPercentage    uint8  `json:"giveBlockRewardPercentage"`
+	GiveDelegateRewardPercentage uint8  `json:"giveDelegateRewardPercentage"`
+}
+
+// Save stores the effective percentages under its name hash and big-endian
+// effective epoch key.
+func (t *PillarEpochTerms) Save(context db.DB) error {
+	data, err := ABIPillars.PackVariable(
+		pillarEpochTermsVariableName,
+		t.GiveBlockRewardPercentage,
+		t.GiveDelegateRewardPercentage,
+	)
+	if err != nil {
+		return err
+	}
+	return context.Put(getPillarEpochTermsEntryKey(t.Name, t.EffectiveEpoch), data)
+}
+
+func getPillarEpochTermsPrefixKey(name string) []byte {
+	return common.JoinBytes(pillarEpochTermsKeyPrefix, types.NewHash([]byte(name)).Bytes())
+}
+
+func getPillarEpochTermsEntryKey(name string, effectiveEpoch uint64) []byte {
+	epochBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(epochBytes, effectiveEpoch)
+	return common.JoinBytes(getPillarEpochTermsPrefixKey(name), epochBytes)
+}
+
+func isPillarEpochTermsKey(key []byte) bool {
+	return len(key) == 1+32+8 && key[0] == pillarEpochTermsKeyPrefix[0]
+}
+
+func unmarshalPillarEpochTermsKey(key []byte) (types.Hash, uint64, error) {
+	if !isPillarEpochTermsKey(key) {
+		return types.ZeroHash, 0, errors.Errorf("invalid key! Not PillarEpochTerms key")
+	}
+	nameHash, err := types.BytesToHash(key[1:33])
+	if err != nil {
+		return types.ZeroHash, 0, err
+	}
+	epoch := binary.BigEndian.Uint64(key[33:41])
+	return nameHash, epoch, nil
+}
+
+func parsePillarEpochTermsEntry(name string, key, data []byte) (*PillarEpochTerms, error) {
+	if len(data) > 0 {
+		entry := new(PillarEpochTerms)
+		if err := ABIPillars.UnpackVariable(entry, pillarEpochTermsVariableName, data); err != nil {
+			return nil, err
+		}
+		_, epoch, err := unmarshalPillarEpochTermsKey(key)
+		if err != nil {
+			return nil, err
+		}
+		entry.Name = name
+		entry.EffectiveEpoch = epoch
+		return entry, nil
+	}
+	return nil, constants.ErrDataNonExistent
+}
+
+// HasPillarEpochTerms reports whether any epoch terms have been recorded for the named pillar.
+func HasPillarEpochTerms(context db.DB, name string) (bool, error) {
+	iterator := context.NewIterator(getPillarEpochTermsPrefixKey(name))
+	defer iterator.Release()
+	if iterator.Next() {
+		return true, nil
+	}
+	return false, iterator.Error()
+}
+
+// GetPillarEpochTerms returns the exact terms record stored for (name, effectiveEpoch),
+// or constants.ErrDataNonExistent if none exists.
+func GetPillarEpochTerms(context db.DB, name string, effectiveEpoch uint64) (*PillarEpochTerms, error) {
+	key := getPillarEpochTermsEntryKey(name, effectiveEpoch)
+	data, err := context.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	return parsePillarEpochTermsEntry(name, key, data)
+}
+
+// GetPillarEpochTermsList returns every recorded epoch terms entry for the named pillar
+// in ascending effective-epoch order.
+func GetPillarEpochTermsList(context db.DB, name string) ([]*PillarEpochTerms, error) {
+	iterator := context.NewIterator(getPillarEpochTermsPrefixKey(name))
+	defer iterator.Release()
+	list := make([]*PillarEpochTerms, 0)
+	for {
+		if !iterator.Next() {
+			if iterator.Error() != nil {
+				return nil, iterator.Error()
+			}
+			break
+		}
+		entry, err := parsePillarEpochTermsEntry(name, iterator.Key(), iterator.Value())
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, entry)
+	}
+	return list, nil
+}
+
+// ResolvePillarEpochTerms looks up the effective reward-sharing percentages
+// for the pillar during the given epoch. If any terms have been recorded,
+// it chooses the entry with the highest EffectiveEpoch <= epoch. If no
+// entries match or none were ever recorded (e.g. before activation or unchanged),
+// it falls back to the live percentages in pillar.
+func ResolvePillarEpochTerms(context db.DB, pillar *PillarInfo, epoch uint64) (uint8, uint8, error) {
+	iterator := context.NewIterator(getPillarEpochTermsPrefixKey(pillar.Name))
+	defer iterator.Release()
+
+	var candidate *PillarEpochTerms
+	for {
+		if !iterator.Next() {
+			if iterator.Error() != nil {
+				return 0, 0, iterator.Error()
+			}
+			break
+		}
+
+		entry, err := parsePillarEpochTermsEntry(pillar.Name, iterator.Key(), iterator.Value())
+		if err != nil {
+			return 0, 0, err
+		}
+		if entry.EffectiveEpoch <= epoch {
+			candidate = entry
+		} else {
+			// Because keys are in big-endian epoch order, once EffectiveEpoch > epoch,
+			// all subsequent entries will also be > epoch.
+			break
+		}
+	}
+
+	if candidate != nil {
+		return candidate.GiveBlockRewardPercentage, candidate.GiveDelegateRewardPercentage, nil
+	}
+	return pillar.GiveBlockRewardPercentage, pillar.GiveDelegateRewardPercentage, nil
+}
+

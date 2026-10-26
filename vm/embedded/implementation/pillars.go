@@ -432,6 +432,12 @@ func computeDetailedPillarReward(context vm_context.AccountVmContext, epoch uint
 	toGive := make(map[string]*big.Int)
 	pillarInfos, err := definition.GetPillarsList(context.Storage(), false, definition.AnyPillarType)
 
+	type pillarSplit struct {
+		block    uint8
+		delegate uint8
+	}
+	splits := make(map[string]pillarSplit)
+
 	// set pillar percentages in DB for historic reasons
 	for _, pillar := range pillarInfos {
 		reward, ok := pillarReward[pillar.Name]
@@ -440,11 +446,22 @@ func computeDetailedPillarReward(context vm_context.AccountVmContext, epoch uint
 			continue
 		}
 
+		giveBlock := pillar.GiveBlockRewardPercentage
+		giveDelegate := pillar.GiveDelegateRewardPercentage
+		if context.IsDynamicPlasmaSporkEnforced() {
+			var err error
+			giveBlock, giveDelegate, err = definition.ResolvePillarEpochTerms(context.Storage(), pillar, epoch)
+			if err != nil {
+				return err
+			}
+		}
+		splits[pillar.Name] = pillarSplit{block: giveBlock, delegate: giveDelegate}
+
 		err = (&definition.PillarEpochHistory{
 			Epoch:                        epoch,
 			Name:                         pillar.Name,
-			GiveBlockRewardPercentage:    pillar.GiveBlockRewardPercentage,
-			GiveDelegateRewardPercentage: pillar.GiveDelegateRewardPercentage,
+			GiveBlockRewardPercentage:    giveBlock,
+			GiveDelegateRewardPercentage: giveDelegate,
 			ProducedBlockNum:             reward.ProducedBlockNum,
 			ExpectedBlockNum:             reward.ExpectedBlockNum,
 			Weight:                       reward.Weight,
@@ -461,13 +478,15 @@ func computeDetailedPillarReward(context vm_context.AccountVmContext, epoch uint
 			continue
 		}
 
+		split := splits[pillar.Name]
+
 		toGiveN := big.NewInt(0)
 		// toGive = (pillar.GiveBlockRewardPercentage * reward.BlockReward + pillar.GiveDelegateRewardPercentage * reward.DelegationReward) / 100
-		tmp := big.NewInt(int64(pillar.GiveBlockRewardPercentage))
+		tmp := big.NewInt(int64(split.block))
 		tmp.Mul(tmp, reward.BlockReward)
 		toGiveN.Add(toGiveN, tmp)
 
-		tmp.SetInt64(int64(pillar.GiveDelegateRewardPercentage))
+		tmp.SetInt64(int64(split.delegate))
 		tmp.Mul(tmp, reward.DelegationReward)
 		toGiveN.Add(toGiveN, tmp)
 
@@ -725,6 +744,42 @@ func (p *UpdatePillarMethod) ReceiveBlock(context vm_context.AccountVmContext, s
 	if param.RewardAddress != pillar.RewardWithdrawAddress {
 		pillarLog.Info("Updating pillar reward address", "pillar-name", param.Name, "old-address", pillar.RewardWithdrawAddress, "new-address", param.RewardAddress)
 		pillar.RewardWithdrawAddress = param.RewardAddress
+	}
+
+	percentagesChanged := param.GiveBlockRewardPercentage != pillar.GiveBlockRewardPercentage || param.GiveDelegateRewardPercentage != pillar.GiveDelegateRewardPercentage
+	if percentagesChanged && context.IsDynamicPlasmaSporkEnforced() {
+		currentM, err := context.GetFrontierMomentum()
+		if err != nil {
+			return nil, err
+		}
+		currentEpoch := context.EpochTicker().ToTick(*currentM.Timestamp)
+		effectiveEpoch := currentEpoch + 1
+
+		hasTerms, err := definition.HasPillarEpochTerms(context.Storage(), pillar.Name)
+		if err != nil {
+			return nil, err
+		}
+		if !hasTerms {
+			baseline := &definition.PillarEpochTerms{
+				Name:                         pillar.Name,
+				EffectiveEpoch:               0,
+				GiveBlockRewardPercentage:    pillar.GiveBlockRewardPercentage,
+				GiveDelegateRewardPercentage: pillar.GiveDelegateRewardPercentage,
+			}
+			if err := baseline.Save(context.Storage()); err != nil {
+				return nil, err
+			}
+		}
+
+		newTerms := &definition.PillarEpochTerms{
+			Name:                         pillar.Name,
+			EffectiveEpoch:               effectiveEpoch,
+			GiveBlockRewardPercentage:    param.GiveBlockRewardPercentage,
+			GiveDelegateRewardPercentage: param.GiveDelegateRewardPercentage,
+		}
+		if err := newTerms.Save(context.Storage()); err != nil {
+			return nil, err
+		}
 	}
 
 	if param.GiveBlockRewardPercentage != pillar.GiveBlockRewardPercentage {
