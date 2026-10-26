@@ -575,19 +575,29 @@ func GetLiquidityStakeListByAddress(context db.DB, address types.Address) ([]*Li
 	weighted := big.NewInt(0)
 	list := make([]*LiquidityStakeEntry, 0)
 
-	err := IterateLiquidityStakeEntries(context, func(stakeEntry *LiquidityStakeEntry) error {
-		if stakeEntry.RevokeTime == 0 && stakeEntry.StakeAddress == address {
-			list = append(list, stakeEntry)
-			total.Add(total, stakeEntry.Amount)
-			weighted.Add(weighted, stakeEntry.WeightedAmount)
+	iterator := context.NewIterator(common.JoinBytes(LiquidityStakeEntryKeyPrefix, address.Bytes()))
+	defer iterator.Release()
+
+	for {
+		if !iterator.Next() {
+			if iterator.Error() != nil {
+				return nil, nil, nil, iterator.Error()
+			}
+			break
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, nil, nil, err
-	} else {
-		return list, total, weighted, nil
+
+		if stakeEntry, err := parseLiquidityStakeEntry(iterator.Key(), iterator.Value()); err == nil {
+			if stakeEntry.RevokeTime == 0 && stakeEntry.StakeAddress == address {
+				list = append(list, stakeEntry)
+				total.Add(total, stakeEntry.Amount)
+				weighted.Add(weighted, stakeEntry.WeightedAmount)
+			}
+		} else if err == constants.ErrDataNonExistent {
+		} else {
+			return nil, nil, nil, err
+		}
 	}
+	return list, total, weighted, nil
 }
 
 // GetAllLiquidityStakeEntries returns every stored stake entry,
