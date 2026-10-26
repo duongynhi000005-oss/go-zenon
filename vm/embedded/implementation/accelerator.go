@@ -352,7 +352,16 @@ func (p *UpdateEmbeddedAcceleratorMethod) ValidateSendBlock(block *nom.AccountBl
 // current phase first (projects without phases last):
 //   - a project in voting whose constants.AcceleratorProjectVotingPeriod
 //     window is still open becomes active when its votes pass
-//     checkAcceleratorVotes; once the window has passed it is closed
+//     checkAcceleratorVotes; once the window has passed, before
+//     DynamicPlasmaSpork it is closed unconditionally, while once
+//     DynamicPlasmaSpork is enforced its recorded votes are tallied
+//     one final time against the active-pillar count at update time
+//     (definition.GetVoteBreakdown counts all stored PillarVote
+//     entries for the project id without filtering against the
+//     active-pillar list, and PillarVote carries no timestamp so any
+//     vote recorded before spork activation is included) and the
+//     project becomes active if the threshold was met, or closed
+//     otherwise
 //   - an active project's current phase in voting is paid when its
 //     votes pass, the phase budget is consistent, the contract's
 //     balance covers both the ZNN and QSR needs and fewer than
@@ -431,6 +440,11 @@ func (p *UpdateEmbeddedAcceleratorMethod) ReceiveBlock(context vm_context.Accoun
 					project.LastUpdateTimestamp = frontierMomentum.Timestamp.Unix()
 					project.Save(context.Storage())
 				}
+			} else if context.IsDynamicPlasmaSporkEnforced() && checkAcceleratorVotes(context, project.Id, numPillars) {
+				acceleratorLog.Debug("project voting period ended with passing votes", "project-id", project.Id)
+				project.Status = definition.ActiveStatus
+				project.LastUpdateTimestamp = frontierMomentum.Timestamp.Unix()
+				project.Save(context.Storage())
 			} else {
 				project.Status = definition.ClosedStatus
 				project.Save(context.Storage())
