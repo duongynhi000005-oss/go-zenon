@@ -431,6 +431,9 @@ func computeDetailedPillarReward(context vm_context.AccountVmContext, epoch uint
 
 	toGive := make(map[string]*big.Int)
 	pillarInfos, err := definition.GetPillarsList(context.Storage(), false, definition.AnyPillarType)
+	if err != nil {
+		return err
+	}
 
 	type pillarSplit struct {
 		block    uint8

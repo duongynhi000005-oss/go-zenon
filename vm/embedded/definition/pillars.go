@@ -162,7 +162,17 @@ type LegacyRegisterParam struct {
 // StakeAddress is the registrant that locked the ZNN deposit (Amount,
 // smallest units) and controls the pillar. RegistrationTime and
 // RevokeTime are unix seconds; RevokeTime is zero while the pillar is
-// active. Entries are stored under pillarInfoKeyPrefix (1) followed
+// active.
+//
+// GiveBlockRewardPercentage and GiveDelegateRewardPercentage store the
+// latest configured reward-sharing split. Once DynamicPlasmaSpork is
+// enforced, an UpdatePillar call in epoch E updates these fields
+// immediately while recording the prior baseline (at epoch 0, on first
+// change) and the new split under PillarEpochTerms at EffectiveEpoch E+1;
+// epoch settlement (ResolvePillarEpochTerms) uses the terms in force for
+// the settled epoch rather than the live PillarInfo fields.
+//
+// Entries are stored under pillarInfoKeyPrefix (1) followed
 // by the SHA3-256 hash of the name.
 type PillarInfo struct {
 	Name                         string
@@ -571,8 +581,13 @@ func getPillarEpochHistoryPrefixKey(epoch uint64) []byte {
 	binary.LittleEndian.PutUint64(epochBytes, epoch)
 	return common.JoinBytes(pillarEpochHistoryKeyPrefix, epochBytes)
 }
-func getPillarEpochHistoryEntryKey(epoch uint64, name string) []byte {
+// GetPillarEpochHistoryKey returns pillarEpochHistoryKeyPrefix (5) followed by
+// the 8-byte little-endian epoch and the pillar name bytes.
+func GetPillarEpochHistoryKey(epoch uint64, name string) []byte {
 	return common.JoinBytes(getPillarEpochHistoryPrefixKey(epoch), []byte(name))
+}
+func getPillarEpochHistoryEntryKey(epoch uint64, name string) []byte {
+	return GetPillarEpochHistoryKey(epoch, name)
 }
 func isPillarEpochHistoryEntryKey(key []byte) bool {
 	return key[0] == pillarEpochHistoryKeyPrefix[0]
@@ -701,14 +716,16 @@ func (t *PillarEpochTerms) Save(context db.DB) error {
 	if err != nil {
 		return err
 	}
-	return context.Put(getPillarEpochTermsEntryKey(t.Name, t.EffectiveEpoch), data)
+	return context.Put(GetPillarEpochTermsKey(t.Name, t.EffectiveEpoch), data)
 }
 
 func getPillarEpochTermsPrefixKey(name string) []byte {
 	return common.JoinBytes(pillarEpochTermsKeyPrefix, types.NewHash([]byte(name)).Bytes())
 }
 
-func getPillarEpochTermsEntryKey(name string, effectiveEpoch uint64) []byte {
+// GetPillarEpochTermsKey returns pillarEpochTermsKeyPrefix (6) followed by
+// the SHA3-256 hash of the pillar name and the 8-byte big-endian effectiveEpoch.
+func GetPillarEpochTermsKey(name string, effectiveEpoch uint64) []byte {
 	epochBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(epochBytes, effectiveEpoch)
 	return common.JoinBytes(getPillarEpochTermsPrefixKey(name), epochBytes)
@@ -760,7 +777,7 @@ func HasPillarEpochTerms(context db.DB, name string) (bool, error) {
 // GetPillarEpochTerms returns the exact terms record stored for (name, effectiveEpoch),
 // or constants.ErrDataNonExistent if none exists.
 func GetPillarEpochTerms(context db.DB, name string, effectiveEpoch uint64) (*PillarEpochTerms, error) {
-	key := getPillarEpochTermsEntryKey(name, effectiveEpoch)
+	key := GetPillarEpochTermsKey(name, effectiveEpoch)
 	data, err := context.Get(key)
 	if err != nil {
 		return nil, err

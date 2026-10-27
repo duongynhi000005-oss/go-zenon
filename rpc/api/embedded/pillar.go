@@ -116,6 +116,20 @@ func (a *PillarApi) GetQsrRegistrationCost() (string, error) {
 // revoked) come from contract state at the account-pool frontier. Type is 1
 // for legacy pillars and 2 for regular ones.
 //
+// GiveMomentumRewardPercentage and GiveDelegateRewardPercentage reflect the
+// pillar's latest stored PillarInfo record at the account-pool frontier. Once
+// DynamicPlasmaSpork is enforced, an UpdatePillar call confirmed in epoch E
+// updates PillarInfo immediately while scheduling the new split in
+// PillarEpochTerms for EffectiveEpoch E+1. Consequently, during epoch E these
+// fields expose the pending percentages that will govern epoch E+1 onward,
+// whereas epoch E itself (and any earlier unsettled epochs) settles under the
+// terms that were in force at the start of that epoch. Clients can inspect
+// GetPillarEpochHistory / GetPillarsHistoryByEpoch for the exact percentages
+// applied to each settled epoch, or compare the frontier PillarInfo percentages
+// against the latest settled epoch history and any UpdatePillar blocks confirmed
+// in the current epoch to distinguish pending next-epoch terms from the current
+// epoch's settlement terms.
+//
 // CanBeRevoked and RevokeCooldown are computed from the registration
 // time and the frontier momentum timestamp: a pillar's lifetime cycles
 // through an 83-day locked window followed by a 7-day revocable window.
