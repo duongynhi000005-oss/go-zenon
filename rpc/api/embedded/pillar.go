@@ -285,6 +285,18 @@ func (a PillarInfoByWeight) Less(i, j int) bool {
 // is global, and Count is the total number of active pillars. A
 // pageSize above 1024 is rejected with api.ErrPageSizeParamTooBig.
 //
+// GiveMomentumRewardPercentage and GiveDelegateRewardPercentage on each
+// returned PillarInfo reflect the latest stored PillarInfo record at the
+// frontier. Once DynamicPlasmaSpork is enforced, an UpdatePillar confirmed
+// during epoch E mutates PillarInfo immediately while scheduling the new
+// split in PillarEpochTerms for EffectiveEpoch E+1; thus those fields report
+// the pending next-epoch terms rather than the terms governing epoch E's
+// settlement. Clients that need the settlement terms for a completed epoch
+// should query GetPillarEpochHistory or GetPillarsHistoryByEpoch, and clients
+// determining the active split during an in-progress epoch E should inspect
+// the latest settled epoch's history entry alongside any UpdatePillar blocks
+// confirmed prior to epoch E.
+//
 // JSON-RPC: embedded.pillar.getAll
 func (a *PillarApi) GetAll(pageIndex, pageSize uint32) (*PillarInfoList, error) {
 	if pageSize > api.RpcMaxPageSize {

@@ -175,10 +175,12 @@ type vmPillarTestContext struct {
 	pillarDelegations    map[uint64]map[string]*types.PillarDelegationDetail
 }
 
-func (ctx *vmPillarTestContext) CacheStore() store.Cache                    { return nil }
-func (ctx *vmPillarTestContext) MomentumStore() store.Momentum              { return ctx.momentumStore }
-func (ctx *vmPillarTestContext) GetFrontierMomentum() (*nom.Momentum, error) { return ctx.frontier, nil }
-func (ctx *vmPillarTestContext) GetGenesisMomentum() *nom.Momentum          { return ctx.frontier }
+func (ctx *vmPillarTestContext) CacheStore() store.Cache       { return nil }
+func (ctx *vmPillarTestContext) MomentumStore() store.Momentum { return ctx.momentumStore }
+func (ctx *vmPillarTestContext) GetFrontierMomentum() (*nom.Momentum, error) {
+	return ctx.frontier, nil
+}
+func (ctx *vmPillarTestContext) GetGenesisMomentum() *nom.Momentum { return ctx.frontier }
 func (ctx *vmPillarTestContext) Save() {
 	s := ctx.Account.Snapshot()
 	ctx.accountStoreSnapshot = ctx.Account
@@ -204,11 +206,11 @@ func (ctx *vmPillarTestContext) SubBalance(ts *types.ZenonTokenStandard, amount 
 	common.DealWithErr(err)
 	common.DealWithErr(ctx.SetBalance(*ts, new(big.Int).Sub(cur, amount)))
 }
-func (ctx *vmPillarTestContext) IsAcceleratorSporkEnforced() bool         { return true }
-func (ctx *vmPillarTestContext) IsHtlcSporkEnforced() bool                { return true }
-func (ctx *vmPillarTestContext) IsBridgeAndLiquiditySporkEnforced() bool  { return true }
-func (ctx *vmPillarTestContext) IsDynamicPlasmaSporkEnforced() bool       { return true }
-func (ctx *vmPillarTestContext) IsPtlcSporkEnforced() bool                { return false }
+func (ctx *vmPillarTestContext) IsAcceleratorSporkEnforced() bool        { return true }
+func (ctx *vmPillarTestContext) IsHtlcSporkEnforced() bool               { return true }
+func (ctx *vmPillarTestContext) IsBridgeAndLiquiditySporkEnforced() bool { return true }
+func (ctx *vmPillarTestContext) IsDynamicPlasmaSporkEnforced() bool      { return true }
+func (ctx *vmPillarTestContext) IsPtlcSporkEnforced() bool               { return false }
 func (ctx *vmPillarTestContext) GetPillarWeights() (map[string]*big.Int, error) {
 	return nil, nil
 }

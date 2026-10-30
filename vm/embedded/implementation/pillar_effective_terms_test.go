@@ -775,11 +775,11 @@ func TestPillar_SeveralUnsettledEpochsUnaffected(t *testing.T) {
 	//   toGiveN = (5 * 833,333,330 + 5 * 400,000,000) / 100 = 61,666,666
 	//   pillarZnn = 1,233,333,330 - 61,666,666 = 1,171,666,664
 	const (
-		totalReward     int64 = 1233333330
-		ep567BackerZnn  int64 = 573333332
-		ep567PillarZnn  int64 = 659999998
-		ep8BackerZnn    int64 = 61666666
-		ep8PillarZnn    int64 = 1171666664
+		totalReward    int64 = 1233333330
+		ep567BackerZnn int64 = 573333332
+		ep567PillarZnn int64 = 659999998
+		ep8BackerZnn   int64 = 61666666
+		ep8PillarZnn   int64 = 1171666664
 	)
 
 	for ep := uint64(5); ep <= 8; ep++ {
@@ -872,11 +872,11 @@ func TestPillar_SeveralUnsettledEpochsUnaffected(t *testing.T) {
 }
 
 // TestPillar_ActivationTransition tests that:
-// 1. A change executed before activation followed by settlement after activation
-//    settles with live values (as today).
-// 2. Epochs settled before activation are untouched.
-// 3. Subsequent post-activation updates preserve unsettled terms correctly.
-// 4. All settled epochs credit exact RewardDeposit and RewardDepositHistory amounts.
+//  1. A change executed before activation followed by settlement after activation
+//     settles with live values (as today).
+//  2. Epochs settled before activation are untouched.
+//  3. Subsequent post-activation updates preserve unsettled terms correctly.
+//  4. All settled epochs credit exact RewardDeposit and RewardDepositHistory amounts.
 func TestPillar_ActivationTransition(t *testing.T) {
 	ctx := newTestPillarContext()
 	method := &UpdatePillarMethod{MethodName: definition.UpdatePillarMethodName}
@@ -910,13 +910,13 @@ func TestPillar_ActivationTransition(t *testing.T) {
 	//     toGiveN   = (70 * 833,333,330 + 30 * 400,000,000) / 100 = 583,333,331 + 120,000,000 = 703,333,331
 	//     pillarZnn = 1,233,333,330 - 703,333,331 = 529,999,999
 	const (
-		totalReward    int64 = 1233333330
-		ep1BackerZnn   int64 = 443333333
-		ep1PillarZnn   int64 = 789999997
-		ep23BackerZnn  int64 = 508333332
-		ep23PillarZnn  int64 = 724999998
-		ep4BackerZnn   int64 = 703333331
-		ep4PillarZnn   int64 = 529999999
+		totalReward   int64 = 1233333330
+		ep1BackerZnn  int64 = 443333333
+		ep1PillarZnn  int64 = 789999997
+		ep23BackerZnn int64 = 508333332
+		ep23PillarZnn int64 = 724999998
+		ep4BackerZnn  int64 = 703333331
+		ep4PillarZnn  int64 = 529999999
 	)
 
 	for ep := uint64(1); ep <= 4; ep++ {

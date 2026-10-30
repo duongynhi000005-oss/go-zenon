@@ -581,6 +581,7 @@ func getPillarEpochHistoryPrefixKey(epoch uint64) []byte {
 	binary.LittleEndian.PutUint64(epochBytes, epoch)
 	return common.JoinBytes(pillarEpochHistoryKeyPrefix, epochBytes)
 }
+
 // GetPillarEpochHistoryKey returns pillarEpochHistoryKeyPrefix (5) followed by
 // the 8-byte little-endian epoch and the pillar name bytes.
 func GetPillarEpochHistoryKey(epoch uint64, name string) []byte {
@@ -843,4 +844,3 @@ func ResolvePillarEpochTerms(context db.DB, pillar *PillarInfo, epoch uint64) (u
 	}
 	return pillar.GiveBlockRewardPercentage, pillar.GiveDelegateRewardPercentage, nil
 }
-
